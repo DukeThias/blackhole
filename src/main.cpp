@@ -1,8 +1,10 @@
+#include "vec3.h"
 #include <SFML/Graphics.hpp>
 #include <iostream>
 
 int main() {
 
+  print(Vec3(2, 3, 34));
   bool mousePressed = false;
   sf::RenderWindow window(sf::VideoMode({2400, 1600}), "blackhole");
   sf::RenderTexture canvas({300, 200});
