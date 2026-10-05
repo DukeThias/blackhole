@@ -4,6 +4,17 @@
 #include <math.h>
 #include <tuple>
 
+Vec3 richtung(float x, float y, float breite, float aspekt, float fov,
+              float hoehe, Vec3 forward, Vec3 up, Vec3 right) {
+  // fdies Funktion gib für einen Pixel auf dem Bildschirm die Richtung des
+  // Lichts aus der Kamera in jene Richtung u und v sind koordinaten auf einer
+  // Bildebene mit dem Abstand abstand von der Kamera
+  float tmp = std::tan(fov / 2);
+  float u = (2 * (x + 0.5) / breite - 1) * aspekt * tmp;
+  float v = (1 - 2 * (y + 0.5) / hoehe) * tmp;
+  return normal(forward + u * right + v * up);
+};
+
 int main() {
   bool mousePressed = false;
   std::tuple<float, float> mousPosition;
