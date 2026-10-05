@@ -14,9 +14,9 @@ Vec3 operator+(const Vec3 &vec1, const Vec3 &vec2);
 Vec3 operator-(const Vec3 &vec1, const Vec3 &vec2);
 // Skalarprodukt
 float operator*(const Vec3 &vec1, const Vec3 &vec2);
-float operator*(const Vec3 &vec2, const float &a);
+Vec3 operator*(const Vec3 &vec2, const float &a);
 
-float operator*(const float &a, const Vec3 &vec2);
+Vec3 operator*(const float &a, const Vec3 &vec2);
 // Kreuzprodukt
 Vec3 crossprod(const Vec3 &vec1, const Vec3 &vec2);
 
