@@ -14,7 +14,33 @@ Vec3 richtung(float x, float y, float breite, float aspekt, float fov,
   float v = (1 - 2 * (y + 0.5) / hoehe) * tmp;
   return normal(forward + u * right + v * up);
 };
+// Richtung als Farbe
+// sf::Color color_from_vec(Vec3 richtung) {
+//   return sf::Color((richtung.x + 1) * 127.5, (richtung.y + 1) * 127.5,
+//                  (richtung.z + 1) * 127.5);
+//};
 
+// Richtung zu Schachbrettmuster
+//
+// sf::Color color_from_vec(Vec3 richtung) {
+//  float k = 10;
+//  float phi = std::atan2(richtung.x, richtung.z);
+//  float theta = std::asin(richtung.y);
+//  if (static_cast<int>(floor(phi * k) + floor(theta * k)) % 2 == 0) {
+//    return sf::Color::White;
+//  } else {
+//    return sf::Color::Black;
+//  }
+//}
+
+// Sterne
+
+sf::Color color_from_vec(Vec3 richtung) {
+  int n = 40;
+  int x = floor(richtung.x * n);
+  int y = floor(richtung.y * n);
+  int z = floor(richtung.z * n);
+}
 int main() {
   bool mousePressed = false;
   std::tuple<float, float> mousPosition;
@@ -37,8 +63,6 @@ int main() {
 
   sf::RenderWindow window(sf::VideoMode({2400, 1600}), "blackhole");
   sf::RenderTexture canvas({breite, hoehe});
-  sf::Sprite sprite(canvas.getTexture());
-  sprite.setScale({8.f, 8.f}); // 300x200 * 4 = 1200x800
 
   const auto onClose = [&window](const sf::Event::Closed &) { window.close(); };
 
@@ -74,7 +98,7 @@ int main() {
       float deltax = mouseMoved.position.x - std::get<0>(mousPosition);
       float deltay = mouseMoved.position.y - std::get<1>(mousPosition);
       yaw = yaw + geschwindigkeit_yaw * deltax;
-      float pitch_tmp = pitch + geschwindigkeit_pitch * deltay;
+      float pitch_tmp = pitch - geschwindigkeit_pitch * deltay;
       if (pitch_tmp > (-1 * (M_PI / 2)) && pitch_tmp < M_PI / 2) {
         pitch = pitch_tmp;
       }
@@ -85,6 +109,13 @@ int main() {
     }
   };
 
+  std::vector<std::uint8_t> pixel(breite * hoehe * 4);
+
+  sf::Texture tex;
+  (void)tex.resize({breite, hoehe});
+  sf::Sprite sprite(tex);
+  sprite.setScale({8.f, 8.f});
+
   while (window.isOpen()) {
     window.handleEvents(onClose, onKeyPressed, mouseButtonPressed,
                         mouseButtonReleased, mouseMoved);
@@ -94,11 +125,19 @@ int main() {
     Vec3 right = normal(crossprod(forward, Vec3(0, 1, 0)));
     Vec3 up = normal(crossprod(right, forward));
 
-    canvas.clear();
+    for (int x = 0; x < breite; x++) {
+      for (int y = 0; y < hoehe; y++) {
+        sf::Color color = color_from_vec(richtung(
+            x, y, breite, aspect_ratio, fov, hoehe, forward, up, right));
 
-    // hier alles in 300x200 zeichnen: canvas.draw(...)
-    canvas.display();
-
+        int i = (y * breite + x) * 4;
+        pixel[i] = color.r;
+        pixel[i + 1] = color.g;
+        pixel[i + 2] = color.b;
+        pixel[i + 3] = 255;
+      }
+    }
+    tex.update(pixel.data());
     window.clear();
     window.draw(sprite);
     window.display();
