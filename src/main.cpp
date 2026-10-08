@@ -1,8 +1,24 @@
 #include "vec3.h"
 #include <SFML/Graphics.hpp>
+#include <SFML/System/Angle.hpp>
+#include <atomic>
 #include <iostream>
 #include <math.h>
+#include <string>
+#include <thread>
 #include <tuple>
+
+sf::Font font("Jetbrains.ttf");
+// hash funktion
+unsigned int hash3(int x, int y, int z) {
+  unsigned int h = (unsigned int)x * 73856093u ^ (unsigned int)y * 19349663u ^
+                   (unsigned int)z * 83492791u;
+  h ^= h >> 13;
+  h *= 0x5bd1e995u;
+  h ^= h >> 15;
+  return h;
+}
+float zufall01(unsigned int h) { return (h & 0xFFFFFF) / 16777216.0f; }
 
 Vec3 richtung(float x, float y, float breite, float aspekt, float fov,
               float hoehe, Vec3 forward, Vec3 up, Vec3 right) {
@@ -35,11 +51,111 @@ Vec3 richtung(float x, float y, float breite, float aspekt, float fov,
 
 // Sterne
 
-sf::Color color_from_vec(Vec3 richtung) {
+// abstand der sternensphäre in würfeleinheiten der kamera
+sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite) {
   int n = 40;
-  int x = floor(richtung.x * n);
-  int y = floor(richtung.y * n);
-  int z = floor(richtung.z * n);
+
+  // größe von stern ausrechnen damit er einen Pixel groß ist
+  float r_stern = std::tan(0.5 * (fov / breite)) * 2.5;
+
+  // genaue position der richtung mal den abstand (genauer Punkt auf der
+  // "Sternensphäre")
+  float pos_x = richtung.x * n;
+  float pos_y = richtung.y * n;
+  float pos_z = richtung.z * n;
+
+  // gerundeter Punkt von oben, um "Sternensphäöre in 3d-Würfelkoordinaten
+  // umzurechnen"
+  int koord_x = (int)std::floor(pos_x);
+  int koord_y = (int)std::floor(pos_y);
+  int koord_z = (int)std::floor(pos_z);
+
+  // rechne die Relative Position im Würfel aus (um entfernung zum
+  // eigentlichen
+  // stern ausrechnen zu können)
+  float pos_in_cube_x = pos_x - koord_x, pos_in_cube_y = pos_y - koord_y,
+        pos_in_cube_z = pos_z - koord_z;
+
+  // 1/50 chance, dass würfel einen stern beinhaltet, durch abgefuckte hash
+  // funktion
+  unsigned int hash_for_cube = hash3(koord_x, koord_y, koord_z);
+
+  if (zufall01(hash_for_cube) < 0.02f) { // wenn stern enthalten ist
+    // koordinaten des Sterns im Würfel (feste zufallszahlen zwischen 0 und 1)
+    float stern_x = zufall01(hash3(koord_x + 1000, koord_y, koord_z));
+    float stern_y = zufall01(hash3(koord_x, koord_y + 2000, koord_z));
+    float stern_z = zufall01(hash3(koord_x, koord_y, koord_z + 3000));
+
+    // abstand zwischen Punkt auf "Sternsphäre" und nächstem Stern (durch
+    // sqrt(x²+y²+z²))
+    // float d = std::sqrt((pos_in_cube_x - stern_x) * (pos_in_cube_x -
+    // stern_x)
+    // +
+    //                    (pos_in_cube_y - stern_y) * (pos_in_cube_y -
+    // stern_y)
+    //                    + (pos_in_cube_z - stern_z) * (pos_in_cube_z -
+    //                    stern_z));
+
+    Vec3 pos_stern_real =
+        Vec3(koord_x + stern_x, koord_y + stern_y, koord_z + stern_z);
+
+    float d = length(normal(richtung) - normal(pos_stern_real));
+    // wenn distanz zum stern kleiner als 0.15, dann pixel in der
+    // dazugehörigen
+    // helligkeit (je nach abstand heller) weiß ferben
+    if (d < r_stern) {
+      float hell = 1.f - d / r_stern;
+      // r g und b jeweils mal helligkeit, die abhängig von distanz zum stern
+      int v = (int)(hell * 255);
+      // ist
+      return sf::Color(v, v, v, 255);
+    }
+  }
+  return sf::Color::Black;
+}
+
+sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
+                         const Vec3 &cam_pos) {
+  float d = 0.03;
+  Vec3 pos = cam_pos;
+  float len = length(cam_pos);
+  float schwarzschield_radius = 1;
+  float r_max = 20;
+  while (len > schwarzschield_radius &&
+         !(len > r_max && (pos * richtung) > 0)) {
+    // je weiter weg von schwarzem loch desto größer die schritte
+    pos = pos + richtung * d * len;
+    len = length(pos);
+  }
+
+  if (len < schwarzschield_radius) {
+    return sf::Color::Black;
+  }
+
+  else {
+    return stern_from_vec(richtung, fov, breite);
+  }
+  // r < rs → Pixel schwarz, Schleife beenden
+  // r > rmax (z. B. 20) und Skalarprodukt(pos, vel) > 0 (läuft nach außen) →
+  // Himmelsfarbe(vel), beenden Beschleunigung: a = −1,5 · rs · h² / r⁵ · pos
+  // vel = vel + a · dt, danach vel normalisieren pos = pos + vel · dt
+}
+
+void calc_line(const float &hoehe, const float &x, const int &breite,
+               const float &aspect_ratio, const float &fov, const Vec3 &forward,
+               const Vec3 &up, const Vec3 &right, const Vec3 &pos,
+               std::vector<std::uint8_t> &pixel) {
+  for (int y = 0; y < hoehe; y++) {
+    sf::Color color = color_from_vec(
+        richtung(x, y, breite, aspect_ratio, fov, hoehe, forward, up, right),
+        fov, breite, pos);
+
+    int i = (y * breite + x) * 4;
+    pixel[i] = color.r;
+    pixel[i + 1] = color.g;
+    pixel[i + 2] = color.b;
+    pixel[i + 3] = 255;
+  }
 }
 int main() {
   bool mousePressed = false;
@@ -50,12 +166,14 @@ int main() {
   unsigned int hoehe = 200;
   float fov = M_PI / 2;
   float aspect_ratio = (float)breite / (float)hoehe;
-  std::cout << "asppekt: " << aspect_ratio << std::endl;
   float yaw = 0;
   float pitch = 0;
   float abstand = 10;
   Vec3 pos = abstand * Vec3(std::cos(pitch) * std::sin(yaw), std::sin(pitch),
                             std::cos(pitch) * std::cos(yaw));
+
+  float yaw_alt = yaw + 1;
+  float pitch_alt = pitch;
 
   Vec3 forward = normal(-1 * pos);
   Vec3 right = normal(crossprod(forward, Vec3(0, 1, 0)));
@@ -75,7 +193,6 @@ int main() {
       [&window, &mousePressed](
           const sf::Event::MouseButtonReleased &mouseButtonReleased) {
         if (mouseButtonReleased.button == sf::Mouse::Button::Left) {
-          std::cout << "Linke Maustaste losgelassen" << std::endl;
           mousePressed = false;
         }
       };
@@ -83,7 +200,6 @@ int main() {
   auto mouseButtonPressed =
       [&window, &mousePressed,
        &mousPosition](const sf::Event::MouseButtonPressed &mouseButtonPressed) {
-        std::cout << "Linke Maustaste gedrückt" << std::endl;
         if (mouseButtonPressed.button == sf::Mouse::Button::Left) {
           mousePressed = true;
           std::get<0>(mousPosition) = (mouseButtonPressed.position.x);
@@ -102,8 +218,6 @@ int main() {
       if (pitch_tmp > (-1 * (M_PI / 2)) && pitch_tmp < M_PI / 2) {
         pitch = pitch_tmp;
       }
-      std::cout << "yaw: " << yaw << std::endl;
-      std::cout << "pitch: " << pitch << std::endl;
       std::get<0>(mousPosition) = (mouseMoved.position.x);
       std::get<1>(mousPosition) = (mouseMoved.position.y);
     }
@@ -115,6 +229,14 @@ int main() {
   (void)tex.resize({breite, hoehe});
   sf::Sprite sprite(tex);
   sprite.setScale({8.f, 8.f});
+  sf::Text fps(font);
+  fps.setCharacterSize(24);
+  fps.setFillColor(sf::Color::Red);
+
+  // Uhr für fps
+  sf::Clock clock = sf::Clock();
+  int frames = 0;
+  clock.start();
 
   while (window.isOpen()) {
     window.handleEvents(onClose, onKeyPressed, mouseButtonPressed,
@@ -124,22 +246,31 @@ int main() {
     Vec3 forward = normal(-1 * pos);
     Vec3 right = normal(crossprod(forward, Vec3(0, 1, 0)));
     Vec3 up = normal(crossprod(right, forward));
+    if (!(yaw_alt == yaw && pitch_alt == pitch)) {
+      yaw_alt = yaw;
+      pitch_alt = pitch;
+      std::atomic<int> x{0};
+      int y = x.fetch_add(1);
+      if (y >= hoehe) {
+      }
 
-    for (int x = 0; x < breite; x++) {
-      for (int y = 0; y < hoehe; y++) {
-        sf::Color color = color_from_vec(richtung(
-            x, y, breite, aspect_ratio, fov, hoehe, forward, up, right));
-
-        int i = (y * breite + x) * 4;
-        pixel[i] = color.r;
-        pixel[i + 1] = color.g;
-        pixel[i + 2] = color.b;
-        pixel[i + 3] = 255;
+      for (int x = 0; x < breite; x++) {
+        calc_line(hoehe, x, breite, aspect_ratio, fov, forward, up, right, pos,
+                  pixel);
       }
     }
     tex.update(pixel.data());
     window.clear();
+    float time = clock.getElapsedTime().asSeconds();
+    if (time > 1) {
+      fps.setString(std::to_string((int)(frames / time)));
+      frames = 0;
+      clock.restart();
+    } else {
+      frames++;
+    }
     window.draw(sprite);
+    window.draw(fps);
     window.display();
   }
 }
