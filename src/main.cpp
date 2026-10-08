@@ -120,11 +120,19 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
   Vec3 pos = cam_pos;
   float len = length(cam_pos);
   float schwarzschield_radius = 1;
+  float akkretionsscheibe_radius = 2;
   float r_max = 20;
+  float h = length(crossprod(pos, richtung));
+  float h2 = h * h;
+  // h ist irgendwie wichtig für die physik
   while (len > schwarzschield_radius &&
          !(len > r_max && (pos * richtung) > 0)) {
     // je weiter weg von schwarzem loch desto größer die schritte
-    pos = pos + richtung * d * len;
+    float dt = d * len; // wird zweimal benutzt deshalb einmal ausrechnen
+    float faktor = -1.5 * schwarzschield_radius * h2 / std::pow(len, 5);
+    richtung = normal(richtung + pos * dt * faktor);
+    pos = pos + richtung * dt;
+
     len = length(pos);
   }
 
@@ -249,14 +257,26 @@ int main() {
     if (!(yaw_alt == yaw && pitch_alt == pitch)) {
       yaw_alt = yaw;
       pitch_alt = pitch;
-      std::atomic<int> x{0};
-      int y = x.fetch_add(1);
-      if (y >= hoehe) {
+      std::atomic<int> i{0};
+      auto lamda = [&] {
+        while (true) {
+          if (i >= breite) {
+            break;
+          }
+          int k = i.fetch_add(1);
+          calc_line(hoehe, k, breite, aspect_ratio, fov, forward, up, right,
+                    pos, pixel);
+        }
+      };
+
+      std::vector<std::thread> threads;
+
+      for (int j = 0; j < 24; j++) {
+        threads.emplace_back(lamda);
       }
 
-      for (int x = 0; x < breite; x++) {
-        calc_line(hoehe, x, breite, aspect_ratio, fov, forward, up, right, pos,
-                  pixel);
+      for (int j = 0; j < 24; j++) {
+        threads[j].join();
       }
     }
     tex.update(pixel.data());

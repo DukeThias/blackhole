@@ -16,6 +16,7 @@ FetchContent_Declare(SFML
 FetchContent_MakeAvailable(SFML)
 add_executable(main src/main.cpp src/vec3.cpp)
 target_compile_features(main PRIVATE cxx_std_17)
-target_link_libraries(main PRIVATE SFML::Graphics)
+find_package(Threads REQUIRED)
+target_link_libraries(main PRIVATE SFML::Graphics Threads::Threads)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT main)
