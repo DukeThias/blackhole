@@ -1,6 +1,8 @@
+#include "config.h"
 #include "vec3.h"
 #include <SFML/Graphics.hpp>
 #include <SFML/System/Angle.hpp>
+#include <algorithm>
 #include <atomic>
 #include <iostream>
 #include <math.h>
@@ -8,6 +10,7 @@
 #include <thread>
 #include <tuple>
 
+using namespace cfg;
 sf::Font font("Jetbrains.ttf");
 // hash funktion
 unsigned int hash3(int x, int y, int z) {
@@ -80,7 +83,7 @@ sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite) {
   // funktion
   unsigned int hash_for_cube = hash3(koord_x, koord_y, koord_z);
 
-  if (zufall01(hash_for_cube) < 0.02f) { // wenn stern enthalten ist
+  if (zufall01(hash_for_cube) < sternProb) { // wenn stern enthalten ist
     // koordinaten des Sterns im Würfel (feste zufallszahlen zwischen 0 und 1)
     float stern_x = zufall01(hash3(koord_x + 1000, koord_y, koord_z));
     float stern_y = zufall01(hash3(koord_x, koord_y + 2000, koord_z));
@@ -114,16 +117,23 @@ sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite) {
   return sf::Color::Black;
 }
 
+sf::Color akkretionsscheibe_farbe(float &dist, Vec3 &richtung) {
+  float tmp =
+      1.f - (dist - akkretionsscheibe_radius_min) /
+                (akkretionsscheibe_radius_max - akkretionsscheibe_radius_min);
+  tmp = std::clamp(tmp, 0.f, 1.f);
+  return sf::Color(255, static_cast<std::uint8_t>(128 + tmp * 127),
+                   static_cast<std::uint8_t>(tmp * 255), 255);
+}
+
 sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
                          const Vec3 &cam_pos) {
-  float d = 0.03;
   Vec3 pos = cam_pos;
   float len = length(cam_pos);
-  float schwarzschield_radius = 1;
-  float akkretionsscheibe_radius = 2;
-  float r_max = 20;
   float h = length(crossprod(pos, richtung));
   float h2 = h * h;
+  pos = pos + richtung * d * len;
+  float y_pos_alt = pos.y;
   // h ist irgendwie wichtig für die physik
   while (len > schwarzschield_radius &&
          !(len > r_max && (pos * richtung) > 0)) {
@@ -132,8 +142,24 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
     float faktor = -1.5 * schwarzschield_radius * h2 / std::pow(len, 5);
     richtung = normal(richtung + pos * dt * faktor);
     pos = pos + richtung * dt;
-
     len = length(pos);
+    float tmp = length(pos);
+    if (pos.y > 0) {
+      if (y_pos_alt < 0) {
+        if (tmp < akkretionsscheibe_radius_max &&
+            tmp > akkretionsscheibe_radius_min) {
+          return akkretionsscheibe_farbe(tmp, richtung);
+        }
+      }
+    } else {
+      if (y_pos_alt > 0) {
+        if (tmp < akkretionsscheibe_radius_max &&
+            tmp > akkretionsscheibe_radius_min) {
+          return akkretionsscheibe_farbe(tmp, richtung);
+        }
+      }
+    }
+    y_pos_alt = pos.y;
   }
 
   if (len < schwarzschield_radius) {
@@ -168,18 +194,12 @@ void calc_line(const float &hoehe, const float &x, const int &breite,
 int main() {
   bool mousePressed = false;
   std::tuple<float, float> mousPosition;
-  float geschwindigkeit_yaw = 0.001;
-  float geschwindigkeit_pitch = 0.001;
-  unsigned int breite = 300;
-  unsigned int hoehe = 200;
   float fov = M_PI / 2;
   float aspect_ratio = (float)breite / (float)hoehe;
   float yaw = 0;
   float pitch = 0;
-  float abstand = 10;
   Vec3 pos = abstand * Vec3(std::cos(pitch) * std::sin(yaw), std::sin(pitch),
                             std::cos(pitch) * std::cos(yaw));
-
   float yaw_alt = yaw + 1;
   float pitch_alt = pitch;
 
@@ -187,7 +207,8 @@ int main() {
   Vec3 right = normal(crossprod(forward, Vec3(0, 1, 0)));
   Vec3 up = normal(crossprod(right, forward));
 
-  sf::RenderWindow window(sf::VideoMode({2400, 1600}), "blackhole");
+  sf::RenderWindow window(sf::VideoMode({breite_real, hoehe_real}),
+                          "blackhole");
   sf::RenderTexture canvas({breite, hoehe});
 
   const auto onClose = [&window](const sf::Event::Closed &) { window.close(); };
@@ -215,9 +236,8 @@ int main() {
         }
       };
 
-  auto mouseMoved = [&window, &mousePressed, &mousPosition, &yaw, &pitch,
-                     &geschwindigkeit_pitch, &geschwindigkeit_yaw](
-                        const sf::Event::MouseMoved &mouseMoved) {
+  auto mouseMoved = [&window, &mousePressed, &mousPosition, &yaw,
+                     &pitch](const sf::Event::MouseMoved &mouseMoved) {
     if (mousePressed) {
       float deltax = mouseMoved.position.x - std::get<0>(mousPosition);
       float deltay = mouseMoved.position.y - std::get<1>(mousPosition);
@@ -236,7 +256,8 @@ int main() {
   sf::Texture tex;
   (void)tex.resize({breite, hoehe});
   sf::Sprite sprite(tex);
-  sprite.setScale({8.f, 8.f});
+  sprite.setScale({static_cast<float>(breite_real) / breite,
+                   static_cast<float>(hoehe_real) / hoehe});
   sf::Text fps(font);
   fps.setCharacterSize(24);
   fps.setFillColor(sf::Color::Red);
