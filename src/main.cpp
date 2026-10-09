@@ -2,6 +2,7 @@
 #include "vec3.h"
 #include <SFML/Graphics.hpp>
 #include <SFML/System/Angle.hpp>
+#include <SFML/Window/Keyboard.hpp>
 #include <algorithm>
 #include <atomic>
 #include <iostream>
@@ -55,7 +56,8 @@ Vec3 richtung(float x, float y, float breite, float aspekt, float fov,
 // Sterne
 
 // abstand der sternensphäre in würfeleinheiten der kamera
-sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite) {
+sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite,
+                         const float &sterne_faktor) {
   int n = 40;
 
   // größe von stern ausrechnen damit er einen Pixel groß ist
@@ -83,7 +85,8 @@ sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite) {
   // funktion
   unsigned int hash_for_cube = hash3(koord_x, koord_y, koord_z);
 
-  if (zufall01(hash_for_cube) < sternProb) { // wenn stern enthalten ist
+  if (zufall01(hash_for_cube) <
+      sternProb * sterne_faktor) { // wenn stern enthalten ist
     // koordinaten des Sterns im Würfel (feste zufallszahlen zwischen 0 und 1)
     float stern_x = zufall01(hash3(koord_x + 1000, koord_y, koord_z));
     float stern_y = zufall01(hash3(koord_x, koord_y + 2000, koord_z));
@@ -127,7 +130,7 @@ sf::Color akkretionsscheibe_farbe(float &dist, Vec3 &richtung) {
 }
 
 sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
-                         const Vec3 &cam_pos) {
+                         const Vec3 &cam_pos, const float &sterne_faktor) {
   Vec3 pos = cam_pos;
   float len = length(cam_pos);
   float h = length(crossprod(pos, richtung));
@@ -167,7 +170,7 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
   }
 
   else {
-    return stern_from_vec(richtung, fov, breite);
+    return stern_from_vec(richtung, fov, breite, sterne_faktor);
   }
   // r < rs → Pixel schwarz, Schleife beenden
   // r > rmax (z. B. 20) und Skalarprodukt(pos, vel) > 0 (läuft nach außen) →
@@ -178,11 +181,11 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
 void calc_line(const float &hoehe, const float &x, const int &breite,
                const float &aspect_ratio, const float &fov, const Vec3 &forward,
                const Vec3 &up, const Vec3 &right, const Vec3 &pos,
-               std::vector<std::uint8_t> &pixel) {
+               std::vector<std::uint8_t> &pixel, const float &sterne_faktor) {
   for (int y = 0; y < hoehe; y++) {
     sf::Color color = color_from_vec(
         richtung(x, y, breite, aspect_ratio, fov, hoehe, forward, up, right),
-        fov, breite, pos);
+        fov, breite, pos, sterne_faktor);
 
     int i = (y * breite + x) * 4;
     pixel[i] = color.r;
@@ -191,8 +194,41 @@ void calc_line(const float &hoehe, const float &x, const int &breite,
     pixel[i + 3] = 255;
   }
 }
+
+void calc_bilschirm(const float &hoehe, const float &breite,
+                    const float &aspect_ratio, const float &fov,
+                    const Vec3 &forward, Vec3 &up, const Vec3 &right,
+                    const Vec3 &pos, std::vector<std::uint8_t> &pixel,
+                    const float &sterne_faktor) {
+
+  std::atomic<int> i{0};
+  auto lamda = [&] {
+    while (true) {
+      int k = i.fetch_add(1);
+      if (i >= breite) {
+        break;
+      }
+      calc_line(hoehe, k, breite, aspect_ratio, fov, forward, up, right, pos,
+                pixel, sterne_faktor);
+    }
+  };
+
+  std::vector<std::thread> threads;
+
+  for (int j = 0; j < 24; j++) {
+    threads.emplace_back(lamda);
+  }
+
+  for (int j = 0; j < 24; j++) {
+    threads[j].join();
+  }
+}
 int main() {
+  char zustand =
+      'r'; // p = perform (bei mausbewegung), f = fertig (nix tun), r = großes
+           // bild rechnen (nach mausbewegung ein hochauflösendes)
   bool mousePressed = false;
+  float abstand = abstand_start;
   std::tuple<float, float> mousPosition;
   float fov = M_PI / 2;
   float aspect_ratio = (float)breite / (float)hoehe;
@@ -200,8 +236,10 @@ int main() {
   float pitch = 0;
   Vec3 pos = abstand * Vec3(std::cos(pitch) * std::sin(yaw), std::sin(pitch),
                             std::cos(pitch) * std::cos(yaw));
+  float sterne_faktor = (float)breite / (float)breite_perform;
   float yaw_alt = yaw + 1;
   float pitch_alt = pitch;
+  float abstand_alt = abstand;
 
   Vec3 forward = normal(-1 * pos);
   Vec3 right = normal(crossprod(forward, Vec3(0, 1, 0)));
@@ -209,14 +247,19 @@ int main() {
 
   sf::RenderWindow window(sf::VideoMode({breite_real, hoehe_real}),
                           "blackhole");
-  sf::RenderTexture canvas({breite, hoehe});
 
   const auto onClose = [&window](const sf::Event::Closed &) { window.close(); };
 
-  const auto onKeyPressed = [&window](const sf::Event::KeyPressed &keyPressed) {
-    if (keyPressed.scancode == sf::Keyboard::Scancode::Escape)
-      window.close();
-  };
+  const auto onKeyPressed =
+      [&window, &abstand](const sf::Event::KeyPressed &keyPressed) {
+        if (keyPressed.scancode == sf::Keyboard::Scancode::Escape) {
+          window.close();
+        } else if (keyPressed.scancode == sf::Keyboard::Scancode::RBracket) {
+          abstand = abstand + 1;
+        } else if (keyPressed.scancode == sf::Keyboard::Scancode::Slash) {
+          abstand = abstand - 1;
+        }
+      };
 
   auto mouseButtonReleased =
       [&window, &mousePressed](
@@ -252,12 +295,20 @@ int main() {
   };
 
   std::vector<std::uint8_t> pixel(breite * hoehe * 4);
+  std::vector<std::uint8_t> pixel_performance(breite_perform * hoehe_perform *
+                                              4);
 
   sf::Texture tex;
   (void)tex.resize({breite, hoehe});
   sf::Sprite sprite(tex);
   sprite.setScale({static_cast<float>(breite_real) / breite,
                    static_cast<float>(hoehe_real) / hoehe});
+  sf::Texture tex_perf;
+  (void)tex_perf.resize({breite_perform, hoehe_perform});
+  sf::Sprite sprite_perf(tex_perf);
+  sprite_perf.setScale({static_cast<float>(breite_real) / breite_perform,
+                        static_cast<float>(hoehe_real) / hoehe_perform});
+
   sf::Text fps(font);
   fps.setCharacterSize(24);
   fps.setFillColor(sf::Color::Red);
@@ -275,32 +326,26 @@ int main() {
     Vec3 forward = normal(-1 * pos);
     Vec3 right = normal(crossprod(forward, Vec3(0, 1, 0)));
     Vec3 up = normal(crossprod(right, forward));
-    if (!(yaw_alt == yaw && pitch_alt == pitch)) {
-      yaw_alt = yaw;
-      pitch_alt = pitch;
-      std::atomic<int> i{0};
-      auto lamda = [&] {
-        while (true) {
-          if (i >= breite) {
-            break;
-          }
-          int k = i.fetch_add(1);
-          calc_line(hoehe, k, breite, aspect_ratio, fov, forward, up, right,
-                    pos, pixel);
-        }
-      };
 
-      std::vector<std::thread> threads;
+    if (!(yaw_alt == yaw && pitch_alt == pitch && abstand == abstand_alt)) {
 
-      for (int j = 0; j < 24; j++) {
-        threads.emplace_back(lamda);
-      }
-
-      for (int j = 0; j < 24; j++) {
-        threads[j].join();
+      zustand = 'p';
+      calc_bilschirm(hoehe_perform, breite_perform, aspect_ratio, fov, forward,
+                     up, right, pos, pixel_performance, 1);
+      tex_perf.update(pixel_performance.data());
+    } else {
+      if (zustand != 'f') {
+        calc_bilschirm(hoehe, breite, aspect_ratio, fov, forward, up, right,
+                       pos, pixel, sterne_faktor);
+        tex.update(pixel.data());
+        zustand = 'f';
       }
     }
-    tex.update(pixel.data());
+
+    yaw_alt = yaw;
+    pitch_alt = pitch;
+    abstand_alt = abstand;
+
     window.clear();
     float time = clock.getElapsedTime().asSeconds();
     if (time > 1) {
@@ -310,7 +355,12 @@ int main() {
     } else {
       frames++;
     }
-    window.draw(sprite);
+    if (zustand == 'p') {
+      window.draw(sprite_perf);
+    } else {
+      window.draw(sprite);
+    }
+
     window.draw(fps);
     window.display();
   }

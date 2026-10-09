@@ -6,10 +6,13 @@ inline constexpr float geschwindigkeit_pitch = 0.001;
 inline constexpr unsigned int breite_real = 2400;
 inline constexpr unsigned int hoehe_real = 1600;
 
-inline constexpr unsigned int breite = 600;
-inline constexpr unsigned int hoehe = 400;
+inline constexpr unsigned int breite = 1200;
+inline constexpr unsigned int hoehe = 800;
 
-inline constexpr float abstand = 15;
+inline constexpr unsigned int breite_perform = 300;
+inline constexpr unsigned int hoehe_perform = 200;
+
+inline constexpr float abstand_start = 15;
 
 inline constexpr float d = 0.03;
 
