@@ -221,8 +221,8 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
     if (as_farbe != sf::Color(0, 0, 0, 0)) {
       return sf::Color(as_farbe.r / 2, as_farbe.g / 2, as_farbe.b / 2);
     }
-    return sf::Color::Black + farbe.b);
-   + farbe.b)
+    return sf::Color::Black;
+
   }
 
   else {
