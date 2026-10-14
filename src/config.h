@@ -21,9 +21,19 @@ inline constexpr float schwarzschield_radius = 1;
 inline constexpr float akkretionsscheibe_radius_min =
     2.6 * schwarzschield_radius;
 inline constexpr float akkretionsscheibe_radius_max =
-    7.0 * schwarzschield_radius;
+    9.0 * schwarzschield_radius;
 
 inline constexpr float r_max = 20;
 
-inline constexpr float sternProb = 0.38f;
+inline constexpr float sternProb = 0.18f;
+
+inline constexpr float lichtgeschwindigkeit_faktor = 0.7;
+
+inline constexpr float belichtung = 4;
+
+inline constexpr int anzahl_ringe_as = 7;
+
+inline constexpr int anzahl_winkel = 12;
+
+inline constexpr int random_hash_zahl = 1000;
 } // namespace cfg

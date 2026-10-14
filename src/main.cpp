@@ -120,13 +120,48 @@ sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite,
   return sf::Color::Black;
 }
 
-sf::Color akkretionsscheibe_farbe(float &dist, Vec3 &richtung) {
-  float tmp =
+sf::Color akkretionsscheibe_farbe(float &dist, Vec3 &richtung, Vec3 &pos) {
+  float abstand =
       1.f - (dist - akkretionsscheibe_radius_min) /
                 (akkretionsscheibe_radius_max - akkretionsscheibe_radius_min);
-  tmp = std::clamp(tmp, 0.f, 1.f);
-  return sf::Color(255, static_cast<std::uint8_t>(128 + tmp * 127),
-                   static_cast<std::uint8_t>(tmp * 255), 255);
+  abstand = std::clamp(abstand, 0.f, 1.f);
+
+  // beta ist fraktion der lichtgeschwindigkeit: geshcwindigkeit der scheibe in
+  // abhängigkeit vom abstand (mehr dopplereffekt in der mitte)
+  float beta = lichtgeschwindigkeit_faktor / std::sqrt(dist);
+  beta = std::clamp(beta, 0.f, 0.95f);
+  int power = 2;
+
+  Vec3 drehungs_richtung = crossprod(pos, Vec3(0, 1, 0));
+
+  float cos_winkel = normal(richtung) * normal(drehungs_richtung);
+
+  float beta_max =
+      lichtgeschwindigkeit_faktor / sqrt(akkretionsscheibe_radius_min);
+  float teiler = pow(1 / (1 - beta_max), power);
+
+  float doppler_faktor = std::pow(1 / (1 + beta * cos_winkel), power) / teiler;
+
+  doppler_faktor *= belichtung;
+
+  float helligkeit = doppler_faktor * abstand;
+
+  float r = std::clamp(255.f * helligkeit, 0.f, 255.f);
+  float g = std::clamp((128.f + abstand * 127.f) * helligkeit, 0.f, 255.f);
+  float b = std::clamp(abstand * 255.f * helligkeit, 0.f, 255.f);
+
+  return sf::Color(r, g, b);
+  // return sf::Color(
+  //     std::clamp(255.f * (float)std::pow(abstand, power) * doppler_faktor,
+  //     0.f,
+  //                255.f),
+  //     std::clamp(static_cast<float>(128 + abstand * 127) *
+  //                    (float)std::pow(abstand, power) * doppler_faktor,
+  //                0.f, 255.f),
+  //     std::clamp(static_cast<float>(abstand * 255) *
+  //                    (float)std::pow(abstand, power) * doppler_faktor,
+  //                0.f, 255.f),
+  //     255);
 }
 
 sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
@@ -137,6 +172,7 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
   float h2 = h * h;
   pos = pos + richtung * d * len;
   float y_pos_alt = pos.y;
+  sf::Color as_farbe = sf::Color(0, 0, 0, 0);
   // h ist irgendwie wichtig für die physik
   while (len > schwarzschield_radius &&
          !(len > r_max && (pos * richtung) > 0)) {
@@ -147,18 +183,34 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
     pos = pos + richtung * dt;
     len = length(pos);
     float tmp = length(pos);
-    if (pos.y > 0) {
-      if (y_pos_alt < 0) {
-        if (tmp < akkretionsscheibe_radius_max &&
-            tmp > akkretionsscheibe_radius_min) {
-          return akkretionsscheibe_farbe(tmp, richtung);
-        }
-      }
-    } else {
-      if (y_pos_alt > 0) {
-        if (tmp < akkretionsscheibe_radius_max &&
-            tmp > akkretionsscheibe_radius_min) {
-          return akkretionsscheibe_farbe(tmp, richtung);
+    if (pos.y * y_pos_alt < 0) {
+      if (tmp < akkretionsscheibe_radius_max &&
+          tmp > akkretionsscheibe_radius_min) {
+
+        float alpha = (atan2(pos.x, pos.z) + M_PI) / (2 * M_PI) * 360;
+
+        float winkel = alpha / anzahl_winkel;
+
+        float radius = tmp * anzahl_ringe_as;
+
+        int winkel_feld = floor(winkel);
+
+        int radius_feld = floor(radius);
+
+        float winkel_in_feld = winkel - winkel_feld;
+        float radius_in_feld = radius - radius_feld;
+
+        float wert_radius1 =
+            zufall01(hash3(winkel_feld, radius_feld, random_hash_zahl));
+
+        float wert_radius2 =
+            zufall01(hash3(winkel_feld, radius_feld + 1, random_hash_zahl));
+
+        float anteil =
+            radius_in_feld * radius_in_feld * (3 - 2 * radius_in_feld);
+        float multi = wert_radius1 + (wert_radius2 - wert_radius1) * anteil;
+        if (multi < 0.92) {
+          as_farbe = akkretionsscheibe_farbe(tmp, richtung, pos);
         }
       }
     }
@@ -166,10 +218,19 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
   }
 
   if (len < schwarzschield_radius) {
-    return sf::Color::Black;
+    if (as_farbe != sf::Color(0, 0, 0, 0)) {
+      return sf::Color(as_farbe.r / 2, as_farbe.g / 2, as_farbe.b / 2);
+    }
+    return sf::Color::Black + farbe.b);
+   + farbe.b)
   }
 
   else {
+    if (as_farbe != sf::Color(0, 0, 0, 0)) {
+      sf::Color farbe = stern_from_vec(richtung, fov, breite, sterne_faktor);
+      return sf::Color((as_farbe.r + farbe.r) / 2, (as_farbe.g + farbe.g) / 2,
+                       (as_farbe.b + farbe.b) / 2);
+    }
     return stern_from_vec(richtung, fov, breite, sterne_faktor);
   }
   // r < rs → Pixel schwarz, Schleife beenden
