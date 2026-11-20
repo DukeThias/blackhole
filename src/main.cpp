@@ -205,7 +205,7 @@ void calc_bilschirm(const float &hoehe, const float &breite,
   auto lamda = [&] {
     while (true) {
       int k = i.fetch_add(1);
-      if (i >= breite) {
+      if (k >= breite) {
         break;
       }
       calc_line(hoehe, k, breite, aspect_ratio, fov, forward, up, right, pos,
