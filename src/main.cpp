@@ -166,13 +166,16 @@ sf::Color akkretionsscheibe_farbe(float &dist, Vec3 &richtung, Vec3 &pos) {
 
 sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
                          const Vec3 &cam_pos, const float &sterne_faktor) {
+
+  std::vector<sf::Color> farbliste;
+  float durchlass = 1;
+  Vec3 summe = Vec3(0, 0, 0);
   Vec3 pos = cam_pos;
   float len = length(cam_pos);
   float h = length(crossprod(pos, richtung));
   float h2 = h * h;
   pos = pos + richtung * d * len;
   float y_pos_alt = pos.y;
-  sf::Color as_farbe = sf::Color(0, 0, 0, 0);
   // h ist irgendwie wichtig für die physik
   while (len > schwarzschield_radius &&
          !(len > r_max && (pos * richtung) > 0)) {
@@ -190,6 +193,7 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
         float alpha = (atan2(pos.x, pos.z) + M_PI) / (2 * M_PI) * 360;
 
         float winkel = alpha / anzahl_winkel;
+        ;
 
         float radius = tmp * anzahl_ringe_as;
 
@@ -209,30 +213,37 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
         float anteil =
             radius_in_feld * radius_in_feld * (3 - 2 * radius_in_feld);
         float multi = wert_radius1 + (wert_radius2 - wert_radius1) * anteil;
-        if (multi < 0.92) {
-          as_farbe = akkretionsscheibe_farbe(tmp, richtung, pos);
-        }
+        float abstand = 1.f - (len - akkretionsscheibe_radius_min) /
+                                  (akkretionsscheibe_radius_max -
+                                   akkretionsscheibe_radius_min);
+        abstand = std::clamp(abstand, 0.f, 1.f);
+
+        multi *= multi;
+        multi = (multi + 0.1) / (1.1 / 0.9);
+        multi *= pow(abstand, 2);
+        sf::Color tmp_col = akkretionsscheibe_farbe(tmp, richtung, pos);
+        summe.x += tmp_col.r * durchlass * multi;
+        summe.y += tmp_col.g * durchlass * multi;
+        summe.z += tmp_col.b * durchlass * multi;
+        durchlass *= 1 - multi;
       }
     }
     y_pos_alt = pos.y;
   }
-
+  sf::Color hintergrund;
   if (len < schwarzschield_radius) {
-    if (as_farbe != sf::Color(0, 0, 0, 0)) {
-      return sf::Color(as_farbe.r / 2, as_farbe.g / 2, as_farbe.b / 2);
-    }
-    return sf::Color::Black;
-
+    hintergrund = sf::Color(0, 0, 0);
+  } else {
+    hintergrund = stern_from_vec(richtung, fov, breite, sterne_faktor);
   }
+  summe.x += hintergrund.r * durchlass;
+  summe.y += hintergrund.g * durchlass;
+  summe.z += hintergrund.b * durchlass;
+  summe.x = std::clamp(summe.x, 0.f, 255.f);
+  summe.y = std::clamp(summe.y, 0.f, 255.f);
+  summe.z = std::clamp(summe.z, 0.f, 255.f);
+  return sf::Color(summe.x, summe.y, summe.z);
 
-  else {
-    if (as_farbe != sf::Color(0, 0, 0, 0)) {
-      sf::Color farbe = stern_from_vec(richtung, fov, breite, sterne_faktor);
-      return sf::Color((as_farbe.r + farbe.r) / 2, (as_farbe.g + farbe.g) / 2,
-                       (as_farbe.b + farbe.b) / 2);
-    }
-    return stern_from_vec(richtung, fov, breite, sterne_faktor);
-  }
   // r < rs → Pixel schwarz, Schleife beenden
   // r > rmax (z. B. 20) und Skalarprodukt(pos, vel) > 0 (läuft nach außen) →
   // Himmelsfarbe(vel), beenden Beschleunigung: a = −1,5 · rs · h² / r⁵ · pos
@@ -266,7 +277,7 @@ void calc_bilschirm(const float &hoehe, const float &breite,
   auto lamda = [&] {
     while (true) {
       int k = i.fetch_add(1);
-      if (i >= breite) {
+      if (k >= breite) {
         break;
       }
       calc_line(hoehe, k, breite, aspect_ratio, fov, forward, up, right, pos,
