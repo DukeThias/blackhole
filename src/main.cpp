@@ -43,6 +43,8 @@ Vec3 richtung(float x, float y, float breite, float aspekt, float fov,
 // Richtung zu Schachbrettmuster
 //
 // sf::Color color_from_vec(Vec3 richtung) {
+// sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite,
+//                         const float &sterne_faktor) {
 //  float k = 10;
 //  float phi = std::atan2(richtung.x, richtung.z);
 //  float theta = std::asin(richtung.y);
@@ -131,6 +133,13 @@ sf::Color akkretionsscheibe_farbe(float &dist, Vec3 &richtung) {
 
 sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
                          const Vec3 &cam_pos, const float &sterne_faktor) {
+
+  float r = 0;
+  float g = 0;
+  float b = 0;
+
+  float alpha_sum = 1;
+
   Vec3 pos = cam_pos;
   float len = length(cam_pos);
   float h = length(crossprod(pos, richtung));
@@ -146,32 +155,40 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
     richtung = normal(richtung + pos * dt * faktor);
     pos = pos + richtung * dt;
     len = length(pos);
-    float tmp = length(pos);
-    if (pos.y > 0) {
-      if (y_pos_alt < 0) {
-        if (tmp < akkretionsscheibe_radius_max &&
-            tmp > akkretionsscheibe_radius_min) {
-          return akkretionsscheibe_farbe(tmp, richtung);
-        }
-      }
-    } else {
-      if (y_pos_alt > 0) {
-        if (tmp < akkretionsscheibe_radius_max &&
-            tmp > akkretionsscheibe_radius_min) {
-          return akkretionsscheibe_farbe(tmp, richtung);
-        }
+
+    if (pos.y * y_pos_alt < 0) {
+      if (len < akkretionsscheibe_radius_max &&
+          len > akkretionsscheibe_radius_min) {
+
+        float alpha_faktor =
+            1 - ((len - akkretionsscheibe_radius_min) /
+                 (akkretionsscheibe_radius_max - akkretionsscheibe_radius_min));
+
+        sf::Color as_farbe = akkretionsscheibe_farbe(len, richtung);
+
+        r = r + as_farbe.r * alpha_faktor * alpha_sum;
+        g = g + as_farbe.g * alpha_faktor * alpha_sum;
+        b = b + as_farbe.b * alpha_faktor * alpha_sum;
+
+        alpha_sum = alpha_sum * (1 - alpha_faktor);
       }
     }
     y_pos_alt = pos.y;
   }
 
   if (len < schwarzschield_radius) {
-    return sf::Color::Black;
+    return sf::Color(r, g, b);
   }
 
   else {
-    return stern_from_vec(richtung, fov, breite, sterne_faktor);
+    sf::Color sterne_farbe =
+        stern_from_vec(richtung, fov, breite, sterne_faktor);
+    r = r + sterne_farbe.r * alpha_sum;
+    g = g + sterne_farbe.g * alpha_sum;
+    b = b + sterne_farbe.b * alpha_sum;
   }
+
+  return sf::Color(r, g, b);
   // r < rs → Pixel schwarz, Schleife beenden
   // r > rmax (z. B. 20) und Skalarprodukt(pos, vel) > 0 (läuft nach außen) →
   // Himmelsfarbe(vel), beenden Beschleunigung: a = −1,5 · rs · h² / r⁵ · pos
