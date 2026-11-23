@@ -12,7 +12,7 @@
 #include <tuple>
 
 using namespace cfg;
-sf::Font font("Jetbrains.ttf");
+sf::Font font("assets/Jetbrains.ttf");
 // hash funktion
 unsigned int hash3(int x, int y, int z) {
   unsigned int h = (unsigned int)x * 73856093u ^ (unsigned int)y * 19349663u ^
@@ -121,6 +121,27 @@ sf::Color stern_from_vec(Vec3 richtung, const float &fov, const int &breite,
   }
   return sf::Color::Black;
 }
+// hintergrundbild
+//
+//
+
+sf::Color hintergrund_from_vec(Vec3 richtung, const float &fov,
+                               const int &bg_breite,
+                               const sf::Image &background) {
+  int pixel_x =
+      ((std::atan2(richtung.x, richtung.z) / (2 * M_PI)) + 0.5) * bg_breite;
+  int pixel_y = (0.5f - std::asin(richtung.y) / M_PI) * bg_breite / 2;
+
+  unsigned int x = std::min(
+      pixel_x,
+      bg_breite -
+          1); // macht x unsigned für getPixel und macht overflow unmöglich
+  unsigned int y = std::min(
+      pixel_y,
+      bg_breite / 2 -
+          1); // macht x unsigned für getPixel und macht overflow unmöglich
+  return background.getPixel({x, y});
+}
 
 sf::Color akkretionsscheibe_farbe(float &dist, Vec3 &richtung) {
   float tmp =
@@ -132,7 +153,8 @@ sf::Color akkretionsscheibe_farbe(float &dist, Vec3 &richtung) {
 }
 
 sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
-                         const Vec3 &cam_pos, const float &sterne_faktor) {
+                         const Vec3 &cam_pos, const float &sterne_faktor,
+                         const sf::Image &background, const int &bg_breite) {
 
   float r = 0;
   float g = 0;
@@ -153,10 +175,19 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
     float dt = d * len; // wird zweimal benutzt deshalb einmal ausrechnen
     float faktor = -1.5 * schwarzschield_radius * h2 / std::pow(len, 5);
     richtung = normal(richtung + pos * dt * faktor);
+
+    Vec3 pos_alt = pos;
+
     pos = pos + richtung * dt;
     len = length(pos);
 
     if (pos.y * y_pos_alt < 0) {
+
+      // t ist lineare interpolation zwischen y alt und y neu (wann genau wird
+      // die akkretionsscheibe geschnitten, wert zwischen 0 und 1)
+      float t = pos_alt.y / (pos_alt.y - pos.y);
+      Vec3 treffpunkt = pos_alt + t * (pos - pos_alt);
+      float len_treffpunkt = length(treffpunkt);
       if (len < akkretionsscheibe_radius_max &&
           len > akkretionsscheibe_radius_min) {
 
@@ -184,7 +215,8 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
 
   else {
     sf::Color sterne_farbe =
-        stern_from_vec(richtung, fov, breite, sterne_faktor);
+        // stern_from_vec(richtung, fov, breite, sterne_faktor);
+        hintergrund_from_vec(richtung, fov, bg_breite, background);
     r = r + sterne_farbe.r * alpha_sum;
     g = g + sterne_farbe.g * alpha_sum;
     b = b + sterne_farbe.b * alpha_sum;
@@ -200,12 +232,12 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
 void calc_line(const float &hoehe, const float &x, const int &breite,
                const float &aspect_ratio, const float &fov, const Vec3 &forward,
                const Vec3 &up, const Vec3 &right, const Vec3 &pos,
-               std::vector<std::uint8_t> &pixel, const float &sterne_faktor) {
+               std::vector<std::uint8_t> &pixel, const float &sterne_faktor,
+               const sf::Image &background, const int &bg_breite) {
   for (int y = 0; y < hoehe; y++) {
     sf::Color color = color_from_vec(
         richtung(x, y, breite, aspect_ratio, fov, hoehe, forward, up, right),
-        fov, breite, pos, sterne_faktor);
-
+        fov, breite, pos, sterne_faktor, background, bg_breite);
     int i = (y * breite + x) * 4;
     pixel[i] = color.r;
     pixel[i + 1] = color.g;
@@ -218,7 +250,8 @@ void calc_bilschirm(const float &hoehe, const float &breite,
                     const float &aspect_ratio, const float &fov,
                     const Vec3 &forward, Vec3 &up, const Vec3 &right,
                     const Vec3 &pos, std::vector<std::uint8_t> &pixel,
-                    const float &sterne_faktor) {
+                    const float &sterne_faktor, const sf::Image &background,
+                    const int &bg_breite) {
 
   std::atomic<int> i{0};
   auto lamda = [&] {
@@ -228,7 +261,7 @@ void calc_bilschirm(const float &hoehe, const float &breite,
         break;
       }
       calc_line(hoehe, k, breite, aspect_ratio, fov, forward, up, right, pos,
-                pixel, sterne_faktor);
+                pixel, sterne_faktor, background, bg_breite);
     }
   };
 
@@ -263,6 +296,10 @@ int main() {
   Vec3 forward = normal(-1 * pos);
   Vec3 right = normal(crossprod(forward, Vec3(0, 1, 0)));
   Vec3 up = normal(crossprod(right, forward));
+
+  sf::Image background;
+  bool e = background.loadFromFile("assets/hintergrund.hdr");
+  sf::Vector2u hintergrund_groesse = background.getSize();
 
   sf::RenderWindow window(sf::VideoMode({breite_real, hoehe_real}),
                           "blackhole");
@@ -350,12 +387,14 @@ int main() {
 
       zustand = 'p';
       calc_bilschirm(hoehe_perform, breite_perform, aspect_ratio, fov, forward,
-                     up, right, pos, pixel_performance, 1);
+                     up, right, pos, pixel_performance, 1, background,
+                     hintergrund_groesse.x);
       tex_perf.update(pixel_performance.data());
     } else {
       if (zustand != 'f') {
         calc_bilschirm(hoehe, breite, aspect_ratio, fov, forward, up, right,
-                       pos, pixel, sterne_faktor);
+                       pos, pixel, sterne_faktor, background,
+                       hintergrund_groesse.x);
         tex.update(pixel.data());
         zustand = 'f';
       }
