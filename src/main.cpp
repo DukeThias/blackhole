@@ -188,16 +188,16 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
       float t = pos_alt.y / (pos_alt.y - pos.y);
       Vec3 treffpunkt = pos_alt + t * (pos - pos_alt);
       float len_treffpunkt = length(treffpunkt);
-      if (len < akkretionsscheibe_radius_max &&
-          len > akkretionsscheibe_radius_min) {
+      if (len_treffpunkt < akkretionsscheibe_radius_max &&
+          len_treffpunkt > akkretionsscheibe_radius_min) {
 
         float alpha_faktor =
-            1 - ((len - akkretionsscheibe_radius_min) /
+            1 - ((len_treffpunkt - akkretionsscheibe_radius_min) /
                  (akkretionsscheibe_radius_max - akkretionsscheibe_radius_min));
 
         alpha_faktor = pow(std::clamp(alpha_faktor + 0.2f, 0.f, 1.f), 2);
 
-        sf::Color as_farbe = akkretionsscheibe_farbe(len, richtung);
+        sf::Color as_farbe = akkretionsscheibe_farbe(len_treffpunkt, richtung);
 
         r = r + as_farbe.r * alpha_faktor * alpha_sum;
         g = g + as_farbe.g * alpha_faktor * alpha_sum;
