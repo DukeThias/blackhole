@@ -164,6 +164,8 @@ sf::Color color_from_vec(Vec3 richtung, const float &fov, const int &breite,
             1 - ((len - akkretionsscheibe_radius_min) /
                  (akkretionsscheibe_radius_max - akkretionsscheibe_radius_min));
 
+        alpha_faktor = pow(std::clamp(alpha_faktor + 0.2f, 0.f, 1.f), 2);
+
         sf::Color as_farbe = akkretionsscheibe_farbe(len, richtung);
 
         r = r + as_farbe.r * alpha_faktor * alpha_sum;

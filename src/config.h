@@ -21,7 +21,7 @@ inline constexpr float schwarzschield_radius = 1;
 inline constexpr float akkretionsscheibe_radius_min =
     2.6 * schwarzschield_radius;
 inline constexpr float akkretionsscheibe_radius_max =
-    7.0 * schwarzschield_radius;
+    14.0 * schwarzschield_radius;
 
 inline constexpr float r_max = 20;
 
